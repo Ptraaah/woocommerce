@@ -222,39 +222,44 @@ abstract class ActionableAbility extends \WP_Ability {
 			$objects[] = array( $secondary[0], $fields, $resource_name );
 		}
 
+		$refused  = new \WP_Error();
+		$failed   = new \WP_Error();
 		$deleting = $this->get_objects_to_delete();
-		foreach ( $objects as list( $object, $fields, $resource_name ) ) {
-			$rejected = $this->apply_fields( $object, $fields );
-			if ( null === $rejected && $enabled ) {
-				$rejected = $this->validate(
-					$object,
-					$resource_name,
-					array(
-						'primary'  => $subject,
-						'deleting' => in_array( $object, $deleting, true ),
-					)
-				);
-			}
-			if ( null !== $rejected ) {
-				return $rejected;
-			}
+		foreach ( $objects as list( $object, $fields ) ) {
+			$this->apply_fields( $object, $fields, $refused, $failed );
 		}
-
-		foreach ( $enabled ? $deleting : array() as $object ) {
-			if ( in_array( $object, array_column( $objects, 0 ), true ) ) {
-				continue;
-			}
-			$rejected = $this->validate(
+		$unconfirmed = $refused->has_errors() || $failed->has_errors();
+		foreach ( $enabled ? $objects : array() as list( $object, , $resource_name ) ) {
+			$this->validate(
 				$object,
-				$this->get_resource(),
+				$resource_name,
 				array(
 					'primary'  => $subject,
-					'deleting' => true,
-				)
+					'deleting' => in_array( $object, $deleting, true ),
+				),
+				$refused,
+				$failed,
+				$unconfirmed
 			);
-			if ( null !== $rejected ) {
-				return $rejected;
+		}
+		foreach ( $enabled ? $deleting : array() as $object ) {
+			if ( ! in_array( $object, array_column( $objects, 0 ), true ) ) {
+				$this->validate(
+					$object,
+					$this->get_resource(),
+					array(
+						'primary'  => $subject,
+						'deleting' => true,
+					),
+					$refused,
+					$failed,
+					$unconfirmed
+				);
 			}
+		}
+		$refused->merge_from( $failed );
+		if ( $refused->has_errors() ) {
+			return $refused;
 		}
 
 		wc_transaction_query( 'start' );
@@ -424,41 +429,86 @@ abstract class ActionableAbility extends \WP_Ability {
 
 	/**
 	 * Write the checked values to the object in memory with the update_callback
-	 * of each field.
+	 * of each field, also after one rejects its value or does not apply to the
+	 * object. Each rejection goes into the given errors, as add_refusal() describes.
 	 *
-	 * @param \WC_Data $subject Object to change.
-	 * @param array    $updates Pairs of field arguments and value from prepare_fields().
-	 * @return \WP_Error|null A WP_Error when the field does not apply to the object, or a callback rejects a value or throws.
+	 * @param \WC_Data  $subject Object to change.
+	 * @param array     $updates Pairs of field arguments and value from prepare_fields().
+	 * @param \WP_Error $refused Collects the refusals.
+	 * @param \WP_Error $failed  Collects the callbacks that crashed.
 	 */
-	private function apply_fields( $subject, array $updates ): ?\WP_Error {
+	private function apply_fields( $subject, array $updates, \WP_Error $refused, \WP_Error $failed ): void {
 		foreach ( $updates as $param => list( $args, $value ) ) {
 			if ( ! ExtensibleAbilities::field_applies_to( $args, $subject ) ) {
-				return self::field_object_type_refusal( $param, ExtensibleAbilities::get_object_type( $subject ) ?? 'unknown', $args['object_types'] );
+				self::add_refusal( self::field_object_type_refusal( $param, ExtensibleAbilities::get_object_type( $subject ) ?? 'unknown', $args['object_types'] ), explode( '.', $param )[1], $refused, $failed );
+				continue;
 			}
 			$rejected = self::run_callback( $args['update_callback'], array( $subject, $value ), array( 'field' => $param ) );
 			if ( null !== $rejected ) {
-				return $rejected;
+				self::add_refusal( $rejected, explode( '.', $param )[1], $refused, $failed );
 			}
 		}
-		return null;
 	}
 
 	/**
-	 * Run the validators of a resource on the changed object.
+	 * Run every validator of a resource on a changed object, also after a field
+	 * or another validator refuses. When a field refused, the object does not
+	 * have that value, so a validator can refuse only because of that. Its
+	 * refusal then gets `unconfirmed` in its data. A validator that crashes on
+	 * such an object is logged and not returned. The next call shows it again
+	 * if it is real.
 	 *
 	 * @param \WC_Data                                 $subject       Changed object.
 	 * @param string                                   $resource_name Resource of the object.
 	 * @param array{primary: \WC_Data, deleting: bool} $context       The primary object of the call, and whether the call deletes or trashes the object.
-	 * @return \WP_Error|null A WP_Error when a validator refuses the change.
+	 * @param \WP_Error                                $refused       Collects the refusals.
+	 * @param \WP_Error                                $failed        Collects the callbacks that crashed.
+	 * @param bool                                     $unconfirmed   Whether a field refusal left a checked object without a value.
 	 */
-	private function validate( $subject, string $resource_name, array $context ): ?\WP_Error {
+	private function validate( $subject, string $resource_name, array $context, \WP_Error $refused, \WP_Error $failed, bool $unconfirmed ): void {
 		foreach ( ExtensibleAbilities::get_validators( $resource_name ) as $args ) {
 			$rejected = self::run_callback( $args['callback'], array( $subject, $this, $context ), array( 'namespace' => $args['namespace'] ) );
 			if ( null !== $rejected ) {
-				return $rejected;
+				self::add_refusal( $rejected, $args['namespace'], $refused, $failed, $unconfirmed );
 			}
 		}
-		return null;
+	}
+
+	/**
+	 * Add the codes of a rejection to the errors of the call. Each code becomes
+	 * `<namespace>:<code>`, so refusals with the same code keep their own data.
+	 * When the code is already taken in the same namespace, by a refusal or by a
+	 * crash, it gets a numeric suffix, as `<namespace>:<code>:2`. A crash goes
+	 * after the refusals, so the response status comes from a refusal when there
+	 * is one.
+	 *
+	 * @param \WP_Error $rejected    Rejection from run_callback().
+	 * @param string    $namespace   Extension that owns the callback.
+	 * @param \WP_Error $refused     Collects the refusals.
+	 * @param \WP_Error $failed      Collects the callbacks that crashed.
+	 * @param bool      $unconfirmed Whether a field refusal left the checked object without a value.
+	 */
+	private static function add_refusal( \WP_Error $rejected, string $namespace, \WP_Error $refused, \WP_Error $failed, bool $unconfirmed = false ): void {
+		foreach ( $rejected->get_error_codes() as $code ) {
+			$data     = array_merge( $rejected->get_error_data( $code ), array( 'namespace' => $namespace ) );
+			$is_crash = 500 === ( $data['status'] ?? null );
+			if ( $unconfirmed && $is_crash ) {
+				continue;
+			}
+			if ( $unconfirmed ) {
+				$data['unconfirmed'] = true;
+			}
+			$target = $is_crash ? $failed : $refused;
+			$key    = $namespace . ':' . $code;
+			$n      = 1;
+			while ( in_array( $key, array_merge( $refused->get_error_codes(), $failed->get_error_codes() ), true ) ) {
+				$key = $namespace . ':' . $code . ':' . ( ++$n );
+			}
+			foreach ( $rejected->get_error_messages( $code ) as $message ) {
+				$target->add( $key, $message );
+			}
+			$target->add_data( $data, $key );
+		}
 	}
 
 	/**
@@ -546,15 +596,19 @@ abstract class ActionableAbility extends \WP_Ability {
 	}
 
 	/**
-	 * Add data to an error, and the 400 status when it has none.
+	 * Add data to every code of an error, and the 400 status to a code that has
+	 * none. It replaces the data of the code, because WP_Error::add_data() would
+	 * also keep the old data, and the client would see it in `additional_data`.
 	 *
 	 * @param \WP_Error            $error Error.
 	 * @param array<string, mixed> $data  Data to add.
 	 * @return \WP_Error
 	 */
 	private static function with_data( \WP_Error $error, array $data ): \WP_Error {
-		$current = $error->get_error_data();
-		$error->add_data( array_merge( array( 'status' => 400 ), is_array( $current ) ? $current : array(), $data ) );
+		foreach ( $error->get_error_codes() as $code ) {
+			$current = $error->get_error_data( $code );
+			$error->error_data[ $code ] = array_merge( array( 'status' => 400 ), is_array( $current ) ? $current : array(), $data );
+		}
 		return $error;
 	}
 }
