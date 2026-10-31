@@ -1445,6 +1445,8 @@ class ExtensibleAbilitiesTest extends \WC_REST_Unit_Test_Case {
 		$published_output = $this->get_output_schema( 'woocommerce/product-update' )['properties']['product']['properties']['extensions']['properties']['declared']['properties'];
 
 		$this->assertSame( $input_schemas, $published_input );
+		$this->assertArrayHasKey( ExtensibleAbilities::ERRORS_KEY, $published_output );
+		unset( $published_output[ ExtensibleAbilities::ERRORS_KEY ] );
 		$this->assertSame( array_fill_keys( array_keys( $input_schemas ), $output_schema ), $published_output );
 	}
 
@@ -3705,7 +3707,7 @@ class ExtensibleAbilitiesTest extends \WC_REST_Unit_Test_Case {
 		$this->assertSame( 'high', $output['order']['extensions']['test-ext']['priority'] );
 		$this->assertSame( 'Lisbon', $output['order']['shipping']['city'] );
 		$this->assertSame( 400, $refused->get_status() );
-		$this->assertSame( 'test_refused', $refused->get_data()['code'] );
+		$this->assertSame( 'test-ext:test_refused', $refused->get_data()['code'] );
 		$this->assertSame( 'Lisbon', $saved->get_shipping_city() );
 		$this->assertSame( 'high', $saved->get_meta( '_test_priority' ) );
 	}
