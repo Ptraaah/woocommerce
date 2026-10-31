@@ -25,6 +25,8 @@ defined( 'ABSPATH' ) || exit;
  * input is ignored. An ability whose own input schema sets
  * `additionalProperties` to false rejects it instead.
  *
+ * The steps are protected, so only execute_change() runs them.
+ *
  * The object that load() returns is the primary object. An ability that saves
  * more objects returns them from change(). These are the secondary objects. Each
  * object gets the field writes and the validators of its own resource before
@@ -67,7 +69,7 @@ abstract class ActionableAbility extends \WP_Ability {
 	 * @param array $input Ability input.
 	 * @return \WC_Data|\WP_Error
 	 */
-	abstract public function load( array $input );
+	abstract protected function load( array $input );
 
 	/**
 	 * Change the primary object in memory, and build the secondary objects that
@@ -83,7 +85,7 @@ abstract class ActionableAbility extends \WP_Ability {
 	 * @param array    $input   Ability input.
 	 * @return null|\WP_Error|array<int, array{0: \WC_Data, 1: array, 2?: string}> A WP_Error rejects the change, and nothing is saved. An array lists the secondary objects.
 	 */
-	abstract public function change( $subject, array $input );
+	abstract protected function change( $subject, array $input );
 
 	/**
 	 * The ability output for the saved object. It must match the output schema
@@ -94,7 +96,7 @@ abstract class ActionableAbility extends \WP_Ability {
 	 * @param \WC_Data $subject Saved object.
 	 * @return mixed
 	 */
-	abstract public function prepare_response( $subject );
+	abstract protected function prepare_response( $subject );
 
 	/**
 	 * Save the changed object. The default calls WC_Data::save(). When the save
@@ -107,7 +109,7 @@ abstract class ActionableAbility extends \WP_Ability {
 	 * @param \WC_Data $subject Changed object.
 	 * @return null|\WP_Error Null when the object was saved, a WP_Error when it was not.
 	 */
-	public function save( $subject ) {
+	protected function save( $subject ) {
 		try {
 			$subject->save();
 		} catch ( \Exception $e ) {
