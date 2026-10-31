@@ -786,7 +786,7 @@ class ExtensibleAbilities {
 	 */
 	public static function register_sync( array $args ): void {
 		if ( did_action( 'woocommerce_extensible_abilities_init' ) && ! doing_action( 'woocommerce_extensible_abilities_init' ) ) {
-			wc_doing_it_wrong( __METHOD__, __( 'Register a sync inside the woocommerce_extensible_abilities_init action.', 'woocommerce' ), '11.4.0' );
+			wc_doing_it_wrong( __METHOD__, 'Register a sync inside the woocommerce_extensible_abilities_init action.', '11.4.0' );
 			return;
 		}
 		foreach ( array( 'resource', 'namespace' ) as $key ) {
@@ -794,8 +794,7 @@ class ExtensibleAbilities {
 				wc_doing_it_wrong(
 					__METHOD__,
 					sprintf(
-						/* translators: %s: argument name. */
-						__( 'The "%s" argument must be a slug of lowercase letters, numbers, dashes and underscores.', 'woocommerce' ),
+						'The "%s" argument must be a slug of lowercase letters, numbers, dashes and underscores.',
 						$key
 					),
 					'11.4.0'
@@ -804,15 +803,14 @@ class ExtensibleAbilities {
 			}
 		}
 		if ( ! is_callable( $args['callback'] ?? null ) ) {
-			wc_doing_it_wrong( __METHOD__, __( 'The "callback" argument must be callable.', 'woocommerce' ), '11.4.0' );
+			wc_doing_it_wrong( __METHOD__, 'The "callback" argument must be callable.', '11.4.0' );
 			return;
 		}
 		if ( ! isset( self::$resources[ $args['resource'] ] ) ) {
 			wc_doing_it_wrong(
 				__METHOD__,
 				sprintf(
-					/* translators: %s: resource name. */
-					__( 'The "%s" resource is not registered. Call ExtensibleAbilities::register_resource() first.', 'woocommerce' ),
+					'The "%s" resource is not registered. Call ExtensibleAbilities::register_resource() first.',
 					$args['resource']
 				),
 				'11.4.0'

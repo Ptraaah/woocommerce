@@ -212,8 +212,7 @@ abstract class ActionableAbility extends \WP_Ability {
 				wc_doing_it_wrong(
 					get_class( $this ) . '::change',
 					sprintf(
-						/* translators: %s: resource name. */
-						__( 'The "%s" resource of a secondary object is not registered, so no extension field or validator runs on it. Call ExtensibleAbilities::register_resource() first.', 'woocommerce' ),
+						'The "%s" resource of a secondary object is not registered, so no extension field or validator runs on it. Call ExtensibleAbilities::register_resource() first.',
 						$resource_name
 					),
 					'11.4.0'
@@ -718,7 +717,7 @@ abstract class ActionableAbility extends \WP_Ability {
 	 */
 	private static function with_data( \WP_Error $error, array $data ): \WP_Error {
 		foreach ( $error->get_error_codes() as $code ) {
-			$current = $error->get_error_data( $code );
+			$current                    = $error->get_error_data( $code );
 			$error->error_data[ $code ] = array_merge( array( 'status' => 400 ), is_array( $current ) ? $current : array(), $data );
 		}
 		return $error;
