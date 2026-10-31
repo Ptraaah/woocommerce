@@ -1400,6 +1400,40 @@ class ExtensibleAbilitiesTest extends \WC_REST_Unit_Test_Case {
 	}
 
 	/**
+	 * @testdox Should say that a namespace sent outside extensions belongs under it, and save nothing.
+	 */
+	public function test_a_namespace_outside_extensions_is_refused_by_name(): void {
+		$product  = \WC_Helper_Product::create_simple_product( true, array( 'name' => 'Pen' ) );
+		$response = $this->run_ability_response(
+			'woocommerce/product-update',
+			array(
+				'id'        => $product->get_id(),
+				'name'      => 'Pencil',
+				'other_ext' => array( 'count' => 3 ),
+			)
+		);
+
+		$this->assertSame( 400, $response->get_status() );
+		$this->assertSame( 'woocommerce_ability_field_namespace_misplaced', $response->get_data()['code'] );
+		$this->assertSame( 'The "other_ext" namespace belongs under "extensions". Send its fields as extensions.other_ext.<field>.', $response->get_data()['message'] );
+		$this->assertSame( 'Pen', wc_get_product( $product->get_id() )->get_name() );
+	}
+
+	/**
+	 * @testdox Should say that a namespace sent outside extensions in a variation belongs under it.
+	 */
+	public function test_a_namespace_outside_extensions_in_a_variation_is_refused_by_name(): void {
+		$input                               = $this->get_shirt_input();
+		$input['variations'][0]['other_ext'] = array( 'count' => 3 );
+
+		$response = $this->run_ability_response( 'woocommerce/product-create', $input );
+
+		$this->assertSame( 400, $response->get_status() );
+		$this->assertSame( 'woocommerce_ability_field_namespace_misplaced', $response->get_data()['code'] );
+		$this->assertSame( 'The "other_ext" namespace belongs under "extensions". Send its fields as extensions.other_ext.<field>.', $response->get_data()['message'] );
+	}
+
+	/**
 	 * @testdox Should refuse a list of values in a namespace with the field position as the field name.
 	 */
 	public function test_a_list_in_a_namespace_is_refused_by_name(): void {

@@ -1611,18 +1611,24 @@ trait ProductAbilityTrait {
 
 	/**
 	 * The error for a `variations` item that writes a field that cannot apply to
-	 * a variation or that cannot be written. The input schema would refuse it
-	 * too, with a generic error.
+	 * a variation or that cannot be written, or that sends a field namespace
+	 * outside `extensions`. The input schema would refuse it too, with a generic
+	 * error.
 	 *
-	 * @param mixed $input Ability input.
+	 * @param mixed $input  Ability input.
+	 * @param array $schema Input schema of the ability.
 	 * @return \WP_Error|null
 	 */
-	private static function variation_fields_refusal( $input ): ?\WP_Error {
+	private static function variation_fields_refusal( $input, array $schema ): ?\WP_Error {
 		if ( ! ExtensibleAbilities::is_enabled() || ! is_array( $input['variations'] ?? null ) ) {
 			return null;
 		}
 		$registered = ExtensibleAbilities::get_fields( 'product' );
 		foreach ( $input['variations'] as $item ) {
+			$refusal = self::misplaced_field_namespace_refusal( (array) $item, $schema['properties']['variations']['items'] ?? array() );
+			if ( null !== $refusal ) {
+				return $refusal;
+			}
 			foreach ( (array) ( $item['extensions'] ?? array() ) as $namespace => $fields ) {
 				foreach ( array_keys( (array) $fields ) as $field ) {
 					$args = $registered[ $namespace ][ $field ] ?? null;

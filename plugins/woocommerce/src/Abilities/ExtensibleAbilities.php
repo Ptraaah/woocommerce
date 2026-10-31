@@ -779,7 +779,7 @@ class ExtensibleAbilities {
 	public static function get_input_schema( string $resource_name, ?callable $field_filter = null ): array {
 		$extensions = array(
 			'type'                 => 'object',
-			'description'          => __( 'Values to write to the fields that extensions add, keyed by extension namespace, then field. A null value deletes the value.', 'woocommerce' ),
+			'description'          => __( 'The only place for the fields that extensions add. Do not send them beside the other fields. Keyed by extension namespace, then field: {"<namespace>":{"<field>":<value>}}. A null value deletes the value.', 'woocommerce' ),
 			'additionalProperties' => false,
 		);
 		foreach ( self::get_fields( $resource_name ) as $namespace => $fields ) {

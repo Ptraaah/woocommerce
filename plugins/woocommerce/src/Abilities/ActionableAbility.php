@@ -353,8 +353,9 @@ abstract class ActionableAbility extends \WP_Ability {
 	 * @return true|\WP_Error
 	 */
 	public function validate_input( $input = null ) {
-		if ( isset( $this->get_input_schema()['properties']['extensions'] ) && is_array( $input['extensions'] ?? null ) ) {
-			$refusal = self::field_names_refusal( $input['extensions'], $this->get_resource() );
+		$schema = $this->get_input_schema();
+		if ( isset( $schema['properties']['extensions'] ) && is_array( $input ) ) {
+			$refusal = self::misplaced_field_namespace_refusal( $input, $schema ) ?? self::field_names_refusal( (array) ( $input['extensions'] ?? array() ), $this->get_resource() );
 			if ( null !== $refusal ) {
 				return $refusal;
 			}
@@ -434,6 +435,30 @@ abstract class ActionableAbility extends \WP_Ability {
 			),
 			array( 'status' => 400 )
 		);
+	}
+
+	/**
+	 * The error for a field namespace sent beside the other input properties
+	 * instead of under `extensions`.
+	 *
+	 * @since 11.4.0
+	 *
+	 * @param array $input  Input of one object.
+	 * @param array $schema Input schema of that object.
+	 * @return \WP_Error|null Null when no namespace is misplaced.
+	 */
+	protected static function misplaced_field_namespace_refusal( array $input, array $schema ): ?\WP_Error {
+		foreach ( array_keys( $input ) as $name ) {
+			if ( ! isset( $schema['properties'][ $name ] ) && isset( $schema['properties']['extensions']['properties'][ $name ] ) ) {
+				return new \WP_Error(
+					'woocommerce_ability_field_namespace_misplaced',
+					/* translators: %s: Extension namespace. */
+					sprintf( __( 'The "%1$s" namespace belongs under "extensions". Send its fields as extensions.%1$s.<field>.', 'woocommerce' ), $name ),
+					array( 'status' => 400 )
+				);
+			}
+		}
+		return null;
 	}
 
 	/**

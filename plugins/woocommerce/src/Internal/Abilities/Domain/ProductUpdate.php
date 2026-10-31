@@ -80,7 +80,7 @@ class ProductUpdate extends ActionableAbility {
 	 * @return true|\WP_Error
 	 */
 	public function validate_input( $input = null ) {
-		return self::variation_fields_refusal( $input ) ?? parent::validate_input( $input );
+		return self::variation_fields_refusal( $input, $this->get_input_schema() ) ?? parent::validate_input( $input );
 	}
 
 	/**
